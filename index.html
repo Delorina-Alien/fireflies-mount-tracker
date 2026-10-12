@@ -1,0 +1,261 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fireflies — Montures FFXIV</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #10121b;
+      --panel: #1b1e2b;
+      --gold: #e7bd72;
+      --muted: #a4a9ba;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: #f6f3ed;
+      font: 16px system-ui, sans-serif;
+    }
+    header {
+      padding: 36px 20px;
+      text-align: center;
+      background: linear-gradient(135deg,#29223d,#151b2c);
+      border-bottom: 1px solid #393449;
+    }
+    h1 { color: var(--gold); margin: 0 0 8px; }
+    main { max-width: 1200px; margin: auto; padding: 24px 16px; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3,minmax(0,1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .panel {
+      background: var(--panel);
+      padding: 18px;
+      border-radius: 12px;
+      border: 1px solid #303447;
+    }
+    .number { font-size: 26px; color: var(--gold); font-weight: 700; }
+    input, select, button {
+      background: var(--panel);
+      color: white;
+      border: 1px solid #41465b;
+      border-radius: 8px;
+      padding: 11px;
+      font: inherit;
+    }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    input { flex: 1; min-width: 180px; }
+    button { cursor: pointer; }
+    button:hover { border-color: var(--gold); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+    th, td {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 1px solid #343748;
+    }
+    th { color: var(--gold); }
+    .yes { color: #8de0ad; }
+    .no { color: #ff9999; }
+    .muted { color: var(--muted); }
+    #status { margin: 12px 0; }
+    @media(max-width:600px) {
+      .stats { grid-template-columns: 1fr; }
+      header { padding: 26px 12px; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>✦ FIREFLIES ✦</h1>
+  <div>Suivi des montures — Final Fantasy XIV</div>
+  <p class="muted">Raids et défis extrêmes</p>
+</header>
+
+<main>
+  <div class="stats">
+    <div class="panel">
+      <div class="muted">Membres suivis</div>
+      <div class="number" id="members">—</div>
+    </div>
+    <div class="panel">
+      <div class="muted">Montures ciblées</div>
+      <div class="number" id="mounts">—</div>
+    </div>
+    <div class="panel">
+      <div class="muted">Acquisitions recensées</div>
+      <div class="number" id="acquisitions">—</div>
+    </div>
+  </div>
+
+  <div class="filters">
+    <input id="search" placeholder="Rechercher un membre ou une monture…">
+    <select id="category">
+      <option value="">Toutes les catégories</option>
+      <option value="Extreme">Défis extrêmes</option>
+      <option value="Raid">Raids</option>
+    </select>
+    <select id="ownership">
+      <option value="">Toutes les acquisitions</option>
+      <option value="yes">Obtenues</option>
+      <option value="no">Manquantes</option>
+    </select>
+    <button id="refresh">Actualiser</button>
+  </div>
+
+  <p id="status" class="muted">Chargement des données…</p>
+
+  <div class="panel table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Membre</th>
+          <th>Monture</th>
+          <th>Contenu</th>
+          <th>Combat</th>
+          <th>Statut</th>
+        </tr>
+      </thead>
+      <tbody id="results"></tbody>
+    </table>
+  </div>
+  <p class="muted" id="updated"></p>
+</main>
+
+<script>
+  // Remplace ces deux valeurs par les informations publiques
+  // de ton projet Supabase.
+  const SUPABASE_URL = "https://fsmvhlbedgzoktwxtmzl.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_0CideuvrYFbGTuYLCiBUNA_NiTQrzff";
+
+  let rows = [];
+
+  const $ = id => document.getElementById(id);
+
+  async function loadData() {
+    $("status").textContent = "Chargement…";
+    $("results").replaceChildren();
+
+    try {
+      const url = new URL(
+        "/rest/v1/fc_mount_tracking",
+        SUPABASE_URL
+      );
+      url.searchParams.set("select", "*");
+      url.searchParams.set("order", "character_name.asc");
+      url.searchParams.set("limit", "10000");
+
+      const response = await fetch(url, {
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: "Bearer " + SUPABASE_KEY
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          "Supabase HTTP " + response.status +
+          " — vérifie les permissions et la vue."
+        );
+      }
+
+      rows = await response.json();
+
+      const members = new Set(rows.map(r => r.member_id));
+      const mounts = new Set(rows.map(r => r.mount_id));
+      const acquired = rows.filter(r => r.obtained === true);
+
+      $("members").textContent = members.size;
+      $("mounts").textContent = mounts.size;
+      $("acquisitions").textContent = acquired.length;
+
+      $("status").textContent =
+        rows.length
+          ? rows.length + " associations chargées."
+          : "Aucune donnée : vérifie le catalogue et les permissions.";
+
+      render();
+      $("updated").textContent =
+        "Données chargées le " + new Date().toLocaleString("fr-FR");
+
+    } catch (error) {
+      $("status").textContent = error.message;
+    }
+  }
+
+  function render() {
+    const query = $("search").value.toLocaleLowerCase("fr");
+    const category = $("category").value;
+    const ownership = $("ownership").value;
+
+    const filtered = rows.filter(r => {
+      const text = [
+        r.character_name, r.mount_name, r.encounter_name
+      ].join(" ").toLocaleLowerCase("fr");
+
+      return text.includes(query)
+        && (!category || r.content_type === category)
+        && (!ownership ||
+          (ownership === "yes" && r.obtained === true) ||
+          (ownership === "no" && r.obtained === false));
+    });
+
+    const tbody = $("results");
+    tbody.replaceChildren();
+
+    for (const r of filtered) {
+      const tr = document.createElement("tr");
+
+      const values = [
+        r.character_name,
+        r.mount_name,
+        r.content_type === "Extreme" ? "Défi extrême" :
+        r.content_type === "Raid" ? "Raid" : r.content_type,
+        r.encounter_name,
+        r.obtained === true ? "✓ Obtenue" : "✗ Manquante"
+      ];
+
+      values.forEach((value, i) => {
+        const td = document.createElement("td");
+        td.textContent = value ?? "—";
+        if (i === 4) {
+          td.className = r.obtained === true ? "yes" : "no";
+        }
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    }
+
+    if (!filtered.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 5;
+      td.textContent = "Aucun résultat.";
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+  }
+
+  $("search").addEventListener("input", render);
+  $("category").addEventListener("change", render);
+  $("ownership").addEventListener("change", render);
+  $("refresh").addEventListener("click", loadData);
+
+  loadData();
+  // Actualisation des données affichées toutes les 5 minutes.
+  setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>
